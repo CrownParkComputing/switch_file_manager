@@ -563,12 +563,12 @@ class UndupeOptionsDialog(QDialog):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
-    # Apply a dark theme (optional, requires qt-material or similar)
-    # try:
-    #     import qt_material
-    #     qt_material.apply_stylesheet(app, theme='dark_teal.xml')
-    # except ImportError:
-    #     print("qt-material not found, using default style.")
+    # Apply a dark theme (requires qt-material)
+    try:
+        import qt_material
+        qt_material.apply_stylesheet(app, theme='dark_teal.xml')
+    except ImportError:
+        print("WARNING: qt-material not found, run 'pip install qt-material' for theming. Using default style.")
         
     window = MainWindow()
     window.show()
