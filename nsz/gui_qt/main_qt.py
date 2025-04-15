@@ -22,7 +22,8 @@ from PySide6.QtCore import Qt, Signal, QSettings, Slot, QThread, QObject # Impor
 # --- Constants --- #
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 NSZ_DIR = os.path.dirname(SCRIPT_DIR)
-NSZ_SCRIPT_PATH = os.path.abspath(os.path.join(NSZ_DIR, 'nsz.py')) # Adjust path as needed
+# nsz.py is in the root directory, not in the nsz directory
+NSZ_SCRIPT_PATH = os.path.abspath(os.path.join(os.path.dirname(NSZ_DIR), 'nsz.py'))
 TITLE_ID_REGEX = re.compile(r"\[(01[0-9A-Fa-f]{14})\]") # Regex to find TitleID like [01...]
 
 # Add NSZ directory to sys.path to allow importing nsz_main
