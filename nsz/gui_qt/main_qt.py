@@ -9,6 +9,7 @@ except Exception as e:
 
 import threading
 import re
+from pathlib import Path # Import Path
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QHBoxLayout,
@@ -53,7 +54,8 @@ def list_files_with_info(folder):
                  match = TITLE_ID_REGEX.search(f)
                  if match:
                      title_id = match.group(1)
-                     base_id = title_id[:12] # First 12 chars for grouping
+                     # Extract the base ID (first 13 characters) for grouping
+                     base_id = title_id[:13]
 
                  files.append({
                      'name': f,
@@ -156,7 +158,8 @@ class FileTreeWidget(QTreeWidget):
                 group_item = groups.get(base_id)
                 if not group_item:
                     # Create new group item
-                    group_item = QTreeWidgetItem([f"[{base_id}0000]"]) # Display full base TitleID
+                    # Display the base ID with the correct format
+                    group_item = QTreeWidgetItem([f"[{base_id}]"])
                     # Store group info: type, the FOLDER path it belongs to, and the base ID
                     group_item.setData(0, Qt.UserRole, {'type': 'group', 'path': self.folder_path, 'base_id': base_id})
                     group_item.setFlags(group_item.flags() | Qt.ItemIsUserCheckable) # Enable checkbox
@@ -468,9 +471,12 @@ class FileTreeWidget(QTreeWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.keys_found_status = False # Track status
         self.settings = QSettings("YourOrgName", "SwitchFileManager") # Use appropriate names
         self.setWindowTitle("Switch File Manager NSZ GUI")
         self.setGeometry(100, 100, 1200, 800)
+        # Check for key files
+        self.check_key_files()
 
         # Main layout
         central_widget = QWidget()
@@ -504,8 +510,31 @@ class MainWindow(QMainWindow):
         self.input_folder_path = ""
         self.output_folder_path = ""
 
+        # Setup Status Bar
+        self.key_status_label = QLabel("Key Status: Unknown")
+        self.statusBar().addPermanentWidget(self.key_status_label) # Add to status bar (usually right side)
+        self.update_key_status_label() # Set initial text/color
+        # End Status Bar Setup
+
         # Load last used folders
         self.load_settings()
+
+    def check_key_files(self):
+        """Check for the existence of standard key files."""
+        home_dir = Path.home()
+        switch_dir = home_dir / '.switch'
+        prod_keys_path = switch_dir / 'prod.keys'
+        titlekeys_path = switch_dir / 'titlekeys.txt'
+        self.keys_found_status = prod_keys_path.exists() or titlekeys_path.exists()
+
+    def update_key_status_label(self):
+        """Update the text and color of the key status label."""
+        if self.keys_found_status:
+            self.key_status_label.setText("Key Status: prod.keys or titlekeys.txt FOUND in ~/.switch/")
+            self.key_status_label.setStyleSheet("color: #4CAF50; font-weight: bold;") # Green
+        else:
+            self.key_status_label.setText("Key Status: prod.keys or titlekeys.txt NOT FOUND in ~/.switch/")
+            self.key_status_label.setStyleSheet("color: #F44336; font-weight: bold;") # Red
 
     def load_settings(self):
         """Load last used folder paths from QSettings."""
@@ -548,7 +577,6 @@ class MainWindow(QMainWindow):
 class UndupeOptionsDialog(QDialog):
     def __init__(self, folder_path, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Undupe Options")
         # Add undupe options UI elements here later
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Undupe functionality options placeholder."))
@@ -560,7 +588,7 @@ class UndupeOptionsDialog(QDialog):
         self.setLayout(layout)
 
 
-if __name__ == "__main__":
+def main():
     app = QApplication(sys.argv)
     
     # Apply a dark theme (requires qt-material)
@@ -572,4 +600,7 @@ if __name__ == "__main__":
         
     window = MainWindow()
     window.show()
-    sys.exit(app.exec())
+    return app.exec()
+
+if __name__ == "__main__":
+    sys.exit(main())

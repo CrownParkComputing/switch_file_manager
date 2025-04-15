@@ -15,7 +15,7 @@ setuptools.setup(
 	long_description=long_description,
 	long_description_content_type="text/markdown",
 	url="https://github.com/nicoboss/nsz",
-	packages=['nsz', 'nsz.Fs', 'nsz.nut', 'nsz.gui', 'nsz.gui.txt', 'nsz.gui.shaders', 'nsz.gui.layout', 'nsz.gui.json', 'nsz.gui.fonts'],
+	packages=['nsz', 'nsz.Fs', 'nsz.nut', 'nsz.gui_qt'],
 	classifiers=[
 		"Programming Language :: Python :: 3",
 		"License :: OSI Approved :: MIT License",
@@ -25,15 +25,13 @@ setuptools.setup(
 		'pycryptodome',
 		'zstandard',
 		'enlighten',
+		'PySide6>=6.0.0',
+		'qt-material>=2.14',
 	],
-	extras_require={
-		'gui': [
-			'pywin32;platform_system=="Windows"',
-			'pypiwin32;platform_system=="Windows"',
-			'kivy'
-		]
+	entry_points = {
+		'console_scripts': ['nsz = nsz:main'],
+		'gui_scripts': ['nsz-qt = nsz.gui_qt.main_qt:main']
 	},
-	entry_points = {'console_scripts': ['nsz = nsz:main']},
 	keywords = ['nsz', 'xcz', 'ncz', 'nsp', 'xci', 'nca', 'Switch'],
 	python_requires='>=3.6',
 	zip_safe=False,
