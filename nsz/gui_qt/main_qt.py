@@ -432,42 +432,94 @@ class FileTreeWidget(QTreeWidget):
         self.log_signal.emit(f"[INFO] Parsing info for {os.path.basename(file_path)}...")
         title_id = None
         version = None
+        current_section = None
+        current_file = None
+        is_cnmt = False
+        is_cnmt_xml = False
 
         try:
-             for line in stdout.splitlines():
-                  if line.strip().startswith("TitleID:"):
-                       title_id = line.split(":", 1)[1].strip()
-                  elif line.strip().startswith("Version:"):
-                       version = line.split(":", 1)[1].strip()
-             if not title_id or not version:
-                  raise ValueError("TitleID or Version not found in output")
+            # Parse the output to find the CNMT Title ID and version
+            for line in stdout.splitlines():
+                line = line.strip()
+                
+                # Track which section we're in
+                if line.startswith("NCA Archive"):
+                    current_section = "nca"
+                    is_cnmt = False
+                elif line.startswith("File Path:"):
+                    current_section = "file"
+                    current_file = line.split("File Path:")[1].strip()
+                    if current_file.endswith(".cnmt.nca"):
+                        is_cnmt = True
+                    elif current_file.endswith(".cnmt.xml"):
+                        is_cnmt_xml = True
+                elif line.startswith("Ticket"):
+                    current_section = "ticket"
+                
+                # Get Title ID from CNMT NCA
+                if current_section == "nca" and is_cnmt and "titleId = " in line:
+                    title_id = line.split("titleId = ")[1].strip()
+                    # Remove any whitespace or extra characters
+                    title_id = title_id.strip()
+                # Get version from CNMT XML
+                elif current_section == "file" and is_cnmt_xml and "version=" in line:
+                    version_str = line.split("version=")[1].strip()
+                    if version_str.startswith('"'):
+                        version_str = version_str.strip('"')
+                    try:
+                        version = str(int(version_str, 16))
+                    except ValueError:
+                        self.log_signal.emit(f"[WARNING] Could not parse version: {version_str}")
+                        version = None
 
-             version = version.lstrip('v').replace(' ', '_')
-             base_name, ext = os.path.splitext(os.path.basename(file_path))
-             # Ensure the format matches the regex for grouping if possible
-             new_name = f"{base_name} [{title_id}][{version}]{ext}" # Example format
-             dir_name = os.path.dirname(file_path)
-             new_path = os.path.join(dir_name, new_name)
+            if not title_id:
+                # Try to get Title ID from ticket section as fallback
+                for line in stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("titleId = "):
+                        title_id = line.split("titleId = ")[1].strip()
+                        break
 
-             if file_path == new_path:
-                  self.log_signal.emit(f"[INFO] File '{os.path.basename(file_path)}' already has the correct name format.")
-                  return
+            if not title_id:
+                raise ValueError("TitleID not found in CNMT NCA or ticket output")
 
-             if os.path.exists(new_path):
-                  self.log_signal.emit(f"[ERROR] Target file '{new_name}' already exists. Skipping rename.")
-                  return
+            # Format the version if we have one
+            if version:
+                version = version.lstrip('v').replace(' ', '_')
+            
+            # Extract the base name without any existing Title ID and version
+            base_name = os.path.basename(file_path)
+            # Remove any existing Title ID and version patterns
+            base_name = re.sub(r'__[0-9A-Fa-f]{16}__v\d+.*$', '', base_name)
+            base_name = re.sub(r'\[[0-9A-Fa-f]{16}\]\[v\d+\].*$', '', base_name)
+            base_name = re.sub(r'\[[0-9A-Fa-f]{16}\].*$', '', base_name)
+            base_name = base_name.rstrip('_')  # Remove trailing underscore if present
+            base_name = base_name.strip()  # Remove any extra whitespace
+            
+            # Create new filename with proper format
+            if version:
+                new_name = f"{base_name} [{title_id}][v{version}]{os.path.splitext(file_path)[1]}"
+            else:
+                new_name = f"{base_name} [{title_id}]{os.path.splitext(file_path)[1]}"
+                
+            dir_name = os.path.dirname(file_path)
+            new_path = os.path.join(dir_name, new_name)
 
-             self.log_signal.emit(f"[INFO] Renaming '{os.path.basename(file_path)}' to '{new_name}'")
-             os.rename(file_path, new_path)
-             self.log_signal.emit(f"[SUCCESS] Renamed to '{new_name}'")
-             self.refresh() # Refresh list to show new name
+            if file_path == new_path:
+                self.log_signal.emit(f"[INFO] File '{os.path.basename(file_path)}' already has the correct name format.")
+                return
+
+            if os.path.exists(new_path):
+                self.log_signal.emit(f"[ERROR] Target file '{new_name}' already exists. Skipping rename.")
+                return
+
+            self.log_signal.emit(f"[INFO] Renaming '{os.path.basename(file_path)}' to '{new_name}'")
+            os.rename(file_path, new_path)
+            self.log_signal.emit(f"[SUCCESS] Renamed to '{new_name}'")
+            self.refresh() # Refresh list to show new name
 
         except Exception as e:
-             self.log_signal.emit(f"[ERROR] Failed to parse info or rename '{os.path.basename(file_path)}': {e}")
-             self.log_signal.emit("--- Info Output Received ---")
-             for line in stdout.splitlines():
-                  self.log_signal.emit(line)
-             self.log_signal.emit("--------------------------")
+            self.log_signal.emit(f"[ERROR] Failed to parse info or rename '{os.path.basename(file_path)}': {str(e)}")
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -588,6 +640,87 @@ class UndupeOptionsDialog(QDialog):
         layout.addWidget(button_box)
         self.setLayout(layout)
 
+class CompressOptionsDialog(QDialog):
+    def __init__(self, file_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Compress Options")
+        self.file_path = file_path
+        
+        layout = QFormLayout()
+        
+        # Compression level
+        self.compression_level = QSpinBox()
+        self.compression_level.setRange(1, 22)
+        self.compression_level.setValue(12)
+        layout.addRow("Compression Level:", self.compression_level)
+        
+        # Block size
+        self.block_size = QComboBox()
+        self.block_size.addItems(["128KB", "256KB", "512KB", "1MB", "2MB", "4MB"])
+        self.block_size.setCurrentText("1MB")
+        layout.addRow("Block Size:", self.block_size)
+        
+        # Verify after compression
+        self.verify = QCheckBox("Verify after compression")
+        self.verify.setChecked(True)
+        layout.addRow(self.verify)
+        
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addRow(button_box)
+        
+        self.setLayout(layout)
+    
+    def get_selected_options(self):
+        options = []
+        # Add compression level
+        options.extend(["-l", str(self.compression_level.value())])
+        # Add block size
+        block_size = self.block_size.currentText()
+        block_size_kb = int(block_size.replace("KB", "").replace("MB", "000"))
+        options.extend(["-s", str(block_size_kb)])
+        # Add verify if checked
+        if self.verify.isChecked():
+            options.append("-V")
+        return options
+
+class ExtractOptionsDialog(QDialog):
+    def __init__(self, file_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Extract Options")
+        self.file_path = file_path
+        
+        layout = QFormLayout()
+        
+        # Extract all files
+        self.extract_all = QCheckBox("Extract all files")
+        self.extract_all.setChecked(True)
+        layout.addRow(self.extract_all)
+        
+        # Verify after extraction
+        self.verify = QCheckBox("Verify after extraction")
+        self.verify.setChecked(True)
+        layout.addRow(self.verify)
+        
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addRow(button_box)
+        
+        self.setLayout(layout)
+    
+    def get_selected_options(self):
+        options = []
+        # Add extract all if checked
+        if self.extract_all.isChecked():
+            options.append("--all")
+        # Add verify if checked
+        if self.verify.isChecked():
+            options.append("--verify")
+        return options
 
 def main():
     app = QApplication(sys.argv)
