@@ -96,17 +96,12 @@ class FileTreeConsoleWidget(QWidget):
         # --- End Buttons --- 
 
         self.tree = FileTreeWidget(folder_type=folder_type, parent=self, main_window=self.main_window)
-        self.console = QTextEdit()
-        self.console.setReadOnly(True)
-        self.console.setStyleSheet("background-color: #181c1f; color: #00ff00; font-family: Consolas, monospace;")
-        self.console.setMaximumHeight(120)
         layout.addWidget(self.tree)
-        layout.addWidget(QLabel("Console Output:"))
-        layout.addWidget(self.console)
         self.setLayout(layout)
 
-        # Connect tree's log signal to console's append method
-        self.tree.log_signal.connect(self.append_log)
+        # Connect tree's log signal to main window's console
+        if self.main_window:
+            self.tree.log_signal.connect(self.main_window.append_log)
 
     def expand_all_items(self):
         self.tree.expandAll()
@@ -115,10 +110,6 @@ class FileTreeConsoleWidget(QWidget):
     def collapse_all_items(self):
         self.tree.collapseAll()
         self.tree.resize_columns() # Resize after collapsing
-
-    @Slot(str)
-    def append_log(self, text):
-        self.console.append(text)
 
     def set_folder(self, folder_path):
         self.tree.set_folder(folder_path)
@@ -560,6 +551,16 @@ class MainWindow(QMainWindow):
         splitter.setSizes([600, 600]) # Initial size distribution
         main_layout.addWidget(splitter)
 
+        # Add shared console output at the bottom
+        console_label = QLabel("Console Output:")
+        main_layout.addWidget(console_label)
+        
+        self.console = QTextEdit()
+        self.console.setReadOnly(True)
+        self.console.setStyleSheet("background-color: #181c1f; color: #00ff00; font-family: Consolas, monospace;")
+        self.console.setMinimumHeight(200)  # Make console taller
+        main_layout.addWidget(self.console)
+
         self.input_folder_path = ""
         self.output_folder_path = ""
 
@@ -627,6 +628,13 @@ class MainWindow(QMainWindow):
             self.output_folder_button.setText(f"Output: ...{os.path.basename(folder)}")
             self.settings.setValue("lastOutputFolder", folder) # Save setting
 
+    @Slot(str)
+    def append_log(self, text):
+        self.console.append(text)
+        # Auto-scroll to bottom
+        scrollbar = self.console.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
 class UndupeOptionsDialog(QDialog):
     def __init__(self, folder_path, parent=None):
         super().__init__(parent)
@@ -681,6 +689,34 @@ class CompressOptionsDialog(QDialog):
         block_size = self.block_size.currentText()
         block_size_kb = int(block_size.replace("KB", "").replace("MB", "000"))
         options.extend(["-s", str(block_size_kb)])
+        # Add verify if checked
+        if self.verify.isChecked():
+            options.append("-V")
+        return options
+
+class DecompressOptionsDialog(QDialog):
+    def __init__(self, file_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Decompress Options")
+        self.file_path = file_path
+        
+        layout = QFormLayout()
+        
+        # Verify after decompression
+        self.verify = QCheckBox("Verify after decompression")
+        self.verify.setChecked(True)
+        layout.addRow(self.verify)
+        
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addRow(button_box)
+        
+        self.setLayout(layout)
+    
+    def get_selected_options(self):
+        options = []
         # Add verify if checked
         if self.verify.isChecked():
             options.append("-V")
